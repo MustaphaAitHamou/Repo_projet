@@ -1,0 +1,18 @@
+CREATE DATABASE IF NOT EXISTS ${DB_NAME};
+USE ${DB_NAME};
+
+CREATE TABLE IF NOT EXISTS user (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(120) UNIQUE NOT NULL,
+  hashed_pwd VARCHAR(128) NOT NULL,
+  is_admin BOOL DEFAULT FALSE
+);
+
+-- Seed admin
+INSERT INTO user (email, hashed_pwd, is_admin)
+VALUES (
+  '${ADMIN_EMAIL}',
+  SHA2('${ADMIN_PASSWORD}', 256),
+  TRUE
+)
+ON DUPLICATE KEY UPDATE email = email;
