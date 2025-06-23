@@ -12,7 +12,7 @@ jobs:
     name: 🐍 Backend Tests
     runs-on: ubuntu-latest
     env:
-      PYTHONPATH: ${{ github.workspace }}/backend   # ← indispensable pour `import app`
+      PYTHONPATH: ${{ github.workspace }}/backend
     steps:
       - uses: actions/checkout@v3
 
@@ -50,7 +50,7 @@ jobs:
         working-directory: frontend
 
       - name: Run unit tests
-        run: npm test           # script = jest --ci --coverage
+        run: npm test            # script = jest --ci --coverage
         working-directory: frontend
 
       - name: Upload coverage to Codecov
@@ -105,13 +105,13 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install frontend deps & start
-        run: |
-          npm ci --prefix frontend
-          nohup npm start --prefix frontend &
+      - name: Install frontend deps & start   # ← correction : plus de --prefix
+        working-directory: frontend
         env:
           REACT_APP_API_URL: http://localhost:5000
-        working-directory: frontend
+        run: |
+          npm ci
+          nohup npm start &
 
       # Cypress
       - name: Run Cypress
