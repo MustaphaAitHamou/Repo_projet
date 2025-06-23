@@ -1,4 +1,5 @@
 # backend/app/routes.py
+
 from flask import Flask, request, jsonify, current_app
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import OperationalError
@@ -11,12 +12,19 @@ class SafeSQLAlchemy(SQLAlchemy):
         Supprime l’extension et l’engine existant pour forcer la reconstruction
         avec la config active (utile si on change SQLALCHEMY_DATABASE_URI en TESTING).
         """
-        # Retire l’extension sqlalchemy du Flask app pour la ré-init
-        current_app.extensions.pop('sqlalchemy', None)
-        # Vide le cache des engines
-        self.engines.clear()
-        # Ré-initialise l’extension (prise en compte de current_app.config)
-        self.init_app(current_app)
+        # Récupère l’objet Flask réel, pas le LocalProxy
+        real_app = current_app._get_current_object()
+
+        # Retire l’extension sqlalchemy pour cet app
+        real_app.extensions.pop('sqlalchemy', None)
+
+        # Retire l’engine cache pour cet app
+        # _app_engines est un WeakKeyDictionary mapping app → {bind_key: Engine}
+        if hasattr(self, '_app_engines'):
+            self._app_engines.pop(real_app, None)
+
+        # Ré-initialise l’extension (prend en compte current_app.config)
+        self.init_app(real_app)
 
     def create_all(self, bind=None):
         # Avant de créer les tables, on reconstruit un engine propre
@@ -81,4 +89,3 @@ if __name__ == '__main__':
     except OperationalError:
         pass
     app.run(host='0.0.0.0', port=5000)
-    
