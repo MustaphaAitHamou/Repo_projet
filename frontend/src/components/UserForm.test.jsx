@@ -5,16 +5,20 @@ test('affiche les champs et déclenche onSubmit avec les bonnes valeurs', () => 
   const handleSubmit = jest.fn();
   render(<UserForm onSubmit={handleSubmit} />);
 
+  // Remplit les champs
   fireEvent.change(screen.getByLabelText(/email/i), {
-    target: { value: 'a@b.c' }
+    target: { value: 'a@b.c' },
   });
   fireEvent.change(screen.getByLabelText(/mot de passe/i), {
-    target: { value: 'secret' }
+    target: { value: 'secret' },
   });
-  fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
 
+  // Clique sur le bouton "Ajouter"
+  fireEvent.click(screen.getByRole('button', { name: /ajouter/i }));
+
+  // Vérifie les valeurs transmises
   expect(handleSubmit).toHaveBeenCalledWith({
     email: 'a@b.c',
-    password: 'secret'
+    password: 'secret',
   });
 });
