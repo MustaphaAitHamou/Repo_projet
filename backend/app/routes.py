@@ -1,31 +1,20 @@
-# backend/app/routes.py
 from flask import Flask, request, jsonify, current_app
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import OperationalError
 from werkzeug.security import generate_password_hash
+from flask_cors import CORS                 # ← ajouté
 from .config import Config
 
-
 class SafeSQLAlchemy(SQLAlchemy):
-    """Version « sécurisée » : on peut changer SQLALCHEMY_DATABASE_URI à chaud
-    AVANT la première requête (tests), sans casser l’engine."""
-
     def _refresh_engine(self):
         real_app = current_app._get_current_object()
-
-        # Ne touchez plus à l'extension après la première requête :
         if getattr(real_app, "_got_first_request", False):
-            return  # trop tard pour ré-initialiser proprement
-
-        # Retire l’extension + cache d’engines afin de la reconstruire
+            return
         real_app.extensions.pop("sqlalchemy", None)
         if hasattr(self, "_app_engines"):
             self._app_engines.pop(real_app, None)
-
-        # Re-enregistre l’extension (prend la config courante)
         self.init_app(real_app)
 
-    # Pas de paramètre bind (plus accepté)
     def create_all(self):
         self._refresh_engine()
         super().create_all()
@@ -34,14 +23,14 @@ class SafeSQLAlchemy(SQLAlchemy):
         self._refresh_engine()
         super().drop_all()
 
-
-# ---------- App & DB ----------
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# ─── CORS pour toutes les origines (pratique en CI/dev) ──────────────────────
+CORS(app)                                    # ← ligne ajoutée
+
 db = SafeSQLAlchemy(app)
 
-
-# ---------- Modèle ----------
 class User(db.Model):
     __tablename__ = "user"
     id = db.Column(db.Integer, primary_key=True)
@@ -52,15 +41,12 @@ class User(db.Model):
     def to_dict(self):
         return {"id": self.id, "email": self.email, "is_admin": self.is_admin}
 
-
-# ---------- Hooks & Routes ----------
 @app.before_request
 def ensure_tables_exist():
-    """Crée les tables si besoin (utile en dev / tests)."""
     try:
         db.create_all()
     except OperationalError:
-        pass  # la base n’est peut-être pas encore prête
+        pass
 
 @app.route("/users", methods=["POST"])
 def add_user():
@@ -77,13 +63,10 @@ def add_user():
     db.session.commit()
     return jsonify({"id": user.id}), 201
 
-
 @app.route("/users", methods=["GET"])
 def list_users():
     return jsonify([u.to_dict() for u in User.query.all()]), 200
 
-
-# ---------- Lancement local ----------
 if __name__ == "__main__":
     try:
         db.drop_all()

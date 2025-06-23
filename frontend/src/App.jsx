@@ -1,10 +1,14 @@
+// frontend/src/App.jsx
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import UserForm from './components/UserForm';        // ✅ import par défaut
+import UserForm from './components/UserForm';
 
 export default function App() {
   const [users, setUsers] = useState([]);
 
+  /* ------------------------------------------------------------------ */
+  /* 1) Récupération de la liste des utilisateurs                       */
+  /* ------------------------------------------------------------------ */
   const fetchUsers = async () => {
     const { data } = await axios.get(
       `${process.env.REACT_APP_API_URL}/users`
@@ -12,23 +16,37 @@ export default function App() {
     setUsers(data);
   };
 
-  // On charge la liste une seule fois au montage
+  /* Charge la liste au montage du composant */
   useEffect(() => {
     fetchUsers();
   }, []);
 
+  /* ------------------------------------------------------------------ */
+  /* 2) Suppression d'un utilisateur                                    */
+  /* ------------------------------------------------------------------ */
   const remove = async (id) => {
-    await axios.delete(`${process.env.REACT_APP_API_URL}/users/${id}`, {
-      headers: { 'X-Admin-Token': process.env.REACT_APP_ADMIN_PASSWORD },
-    });
-    fetchUsers();
+    await axios.delete(
+      `${process.env.REACT_APP_API_URL}/users/${id}`,
+      {
+        headers: {
+          // .env ➜ REACT_APP_ADMIN_PASSWORD
+          'X-Admin-Token': process.env.REACT_APP_ADMIN_PASSWORD,
+        },
+      }
+    );
+    fetchUsers(); // rafraîchit la liste
   };
 
+  /* ------------------------------------------------------------------ */
+  /* 3) Rendu                                                           */
+  /* ------------------------------------------------------------------ */
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Utilisateurs</h1>
-      {/* ✅ onSubmit (et non onAdded) */}
+
+      {/* UserForm déclenchera fetchUsers après création */}
       <UserForm onSubmit={fetchUsers} />
+
       <ul>
         {users.map((u) => (
           <li key={u.id}>
