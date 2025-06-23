@@ -1,28 +1,39 @@
-from flask import Flask, request, jsonify
+# backend/app/routes.py
+from flask import Flask, request, jsonify, current_app
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import OperationalError
 from werkzeug.security import generate_password_hash
 from .config import Config
 
 class SafeSQLAlchemy(SQLAlchemy):
-    def create_all(self, bind=None):
-        # Vider le cache des engines pour forcer la reconstruction
+    def _refresh_engine(self):
+        """
+        Supprime l’extension et l’engine existant pour forcer la reconstruction
+        avec la config active (utile si on change SQLALCHEMY_DATABASE_URI en TESTING).
+        """
+        # Retire l’extension sqlalchemy du Flask app pour la ré-init
+        current_app.extensions.pop('sqlalchemy', None)
+        # Vide le cache des engines
         self.engines.clear()
-        # Recréer l'engine à partir de la config courante (ex. SQLite mémoire en test)
-        engine = self.get_engine()
-        # Créer les tables de tous les modèles déclarés
-        self.Model.metadata.create_all(bind=engine)
+        # Ré-initialise l’extension (prise en compte de current_app.config)
+        self.init_app(current_app)
+
+    def create_all(self, bind=None):
+        # Avant de créer les tables, on reconstruit un engine propre
+        self._refresh_engine()
+        super().create_all(bind=bind)
 
     def drop_all(self, bind=None):
-        self.engines.clear()
-        engine = self.get_engine()
-        self.Model.metadata.drop_all(bind=engine)
+        # Avant de drop, même mécanique
+        self._refresh_engine()
+        super().drop_all(bind=bind)
 
+# --- création de l’app et du db handle ---
 app = Flask(__name__)
 app.config.from_object(Config)
-
 db = SafeSQLAlchemy(app)
 
+# --- définition du modèle utilisateur ---
 class User(db.Model):
     __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
@@ -33,14 +44,16 @@ class User(db.Model):
     def to_dict(self):
         return {'id': self.id, 'email': self.email, 'is_admin': self.is_admin}
 
+# --- garantie que la table existe avant chaque requête ---
 @app.before_request
 def ensure_tables_exist():
     try:
         db.create_all()
     except OperationalError:
-        # Par exemple si la base MySQL n'est pas encore dispo au démarrage
+        # la base n’est peut-être pas encore prête, on ignore
         pass
 
+# --- routes CRUD simples ---
 @app.route('/users', methods=['POST'])
 def add_user():
     data = request.get_json() or {}
@@ -68,3 +81,4 @@ if __name__ == '__main__':
     except OperationalError:
         pass
     app.run(host='0.0.0.0', port=5000)
+    
