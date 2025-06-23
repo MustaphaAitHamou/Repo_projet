@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-# ──────────────────────────────────────────
+#───────────────────────────────────────────────────────────────────────────────
   test-backend:
     name: 🐍 Backend Tests
     runs-on: ubuntu-latest
@@ -29,10 +29,7 @@ jobs:
       - name: Run pytest
         working-directory: backend
         run: pytest --cov=app
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-# ──────────────────────────────────────────
+#───────────────────────────────────────────────────────────────────────────────
   test-frontend:
     name: ⚛️ Frontend Tests
     needs: test-backend
@@ -40,22 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Install frontend deps
+      - run: npm ci
         working-directory: frontend
-        run: npm ci
 
-      - name: Run unit tests
+      - run: npm test          # jest --ci --coverage
         working-directory: frontend
-        run: npm test    # script = jest --ci --coverage
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-# ──────────────────────────────────────────
+#───────────────────────────────────────────────────────────────────────────────
   e2e:
     name: 🧪 E2E Tests
     needs: [test-backend, test-frontend]
@@ -64,12 +55,12 @@ jobs:
     services:
       mysql:
         image: mysql:8.0
-        ports: ["3307:3306"]
+        ports: ['3307:3306']
         env:
           MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: mydb
-          MYSQL_USER: test
-          MYSQL_PASSWORD: testpass
+          MYSQL_DATABASE:     mydb
+          MYSQL_USER:         test
+          MYSQL_PASSWORD:     testpass
         options: >-
           --health-cmd="mysqladmin ping -h localhost -uroot -proot --silent"
           --health-interval=10s --health-timeout=5s --health-retries=5
@@ -77,16 +68,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # ── Backend ─────────────────────────────────────────────────────────
-      - name: Setup Python & Backend
-        uses: actions/setup-python@v4
+      # backend
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
 
-      - name: Install backend deps
-        run: pip install -r backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
 
       - name: Start Flask API
         working-directory: backend
@@ -98,59 +87,43 @@ jobs:
           DB_PASSWORD: testpass
         run: nohup gunicorn -w 2 -b 0.0.0.0:5000 app.routes:app &
 
-      # ── Frontend : install seulement ───────────────────────────────────
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      # frontend deps
+      - uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Install frontend deps
+      - run: npm ci
         working-directory: frontend
-        run: npm ci
 
-      # ── Cypress : démarre React et lance les tests ─────────────────────
+      # cypress (React sera démarré ici)
       - name: Run Cypress
         uses: cypress-io/github-action@v5
         with:
-          working-directory: frontend
-          start: npm start
+          working-directory: frontend          # <-- dossier racine de Cypress
+          start: npm start                     # React sur :3000
           wait-on: http://localhost:3000
-          wait-on-timeout: 90
-          config-file: cypress.config.js
+          wait-on-timeout: 90                  # 90 s
         env:
           REACT_APP_API_URL: http://localhost:5000
-# ──────────────────────────────────────────
+#───────────────────────────────────────────────────────────────────────────────
   deploy:
-    name: 🚀 Deploy to GitHub Pages & Vercel
+    name: 🚀 Deploy
     needs: e2e
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: Build frontend
-        working-directory: frontend
-        run: |
+      - run: |
           npm ci
           npm run build
+        working-directory: frontend
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./frontend/build
-
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v20
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: backend
-          prod: true
+          publish_dir: frontend/build
