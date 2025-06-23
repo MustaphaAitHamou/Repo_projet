@@ -1,5 +1,3 @@
-# app/routes.py
-
 import os
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -7,7 +5,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 # instanciation de l'extension
 db = SQLAlchemy()
-
 
 def create_app():
     app = Flask(__name__)
@@ -22,27 +19,10 @@ def create_app():
     # liaison de l'extension
     db.init_app(app)
 
-    # ---- override dynamique de drop_all/create_all pour pytest ----
-    from flask_sqlalchemy import SQLAlchemy as _BaseSQLAlchemy
-    _orig_drop_all = _BaseSQLAlchemy.drop_all
-    _orig_create_all = _BaseSQLAlchemy.create_all
-
-    def _dynamic_drop_all():
-        # vide le cache des engines pour forcer la création
-        db.engines.clear()
-        # recrée l'engine par défaut d'après app.config
-        _ = db.engine
-        # appelle la méthode d'origine (sans argument)
-        return _orig_drop_all(db)
-
-    def _dynamic_create_all():
-        db.engines.clear()
-        _ = db.engine
-        return _orig_create_all(db)
-
-    db.drop_all = _dynamic_drop_all
-    db.create_all = _dynamic_create_all
-    # ---------------------------------------------------------------
+    # Note:
+    # Les tests pytest appellent directement db.create_all() et db.drop_all() sous
+    # un contexte d'application. SQLAlchemy gère lui-même la création de l'engine
+    # à partir de app.config sans nécessiter de hack manuel.
 
     # import du modèle *après* init_app pour éviter les boucles
     from .models import User  # noqa: F401
