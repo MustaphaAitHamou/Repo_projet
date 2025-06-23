@@ -6,14 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-# Le GITHUB_TOKEN peut pousser sur gh-pages
+# Autorise le GITHUB_TOKEN à pousser sur gh-pages
 permissions:
   contents: write
 
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
-
-# 1. Tests backend ────────────────────────────────────────────────────────────
+# ── 1) Tests backend ─────────────────────────────────────────────────────────
   test-backend:
     name: 🐍 Backend Tests
     runs-on: ubuntu-latest
@@ -21,35 +20,29 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}/backend
     steps:
       - uses: actions/checkout@v3
-
       - uses: actions/setup-python@v4
         with: { python-version: '3.11' }
-
       - run: |
           pip install --upgrade pip
           pip install -r backend/requirements.txt
-
       - run: pytest --cov=app
         working-directory: backend
 
-# 2. Tests frontend ───────────────────────────────────────────────────────────
+# ── 2) Tests frontend ────────────────────────────────────────────────────────
   test-frontend:
     name: ⚛️ Frontend Tests
     needs: test-backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
       - uses: actions/setup-node@v3
         with: { node-version: '18' }
-
       - run: npm ci
         working-directory: frontend
-
       - run: npm test -- --coverage
         working-directory: frontend
 
-# 3. E2E Cypress ──────────────────────────────────────────────────────────────
+# ── 3) E2E Cypress ───────────────────────────────────────────────────────────
   e2e:
     name: 🧪 E2E Tests
     needs: [test-backend, test-frontend]
@@ -90,13 +83,14 @@ jobs:
           ADMIN_PASSWORD: testadmin
         run: nohup gunicorn -w 2 -b 0.0.0.0:5000 app.routes:app &
 
-      # Frontend for Cypress
+      # Frontend deps
       - uses: actions/setup-node@v3
         with: { node-version: '18' }
 
       - run: npm ci
         working-directory: frontend
 
+      # Cypress run
       - name: Run Cypress
         uses: cypress-io/github-action@v5
         with:
@@ -109,7 +103,7 @@ jobs:
           REACT_APP_API_URL: http://localhost:5000
           REACT_APP_ADMIN_PASSWORD: testadmin
 
-# 4. Déploiement ──────────────────────────────────────────────────────────────
+# ── 4) Déploiement ───────────────────────────────────────────────────────────
   deploy:
     name: 🚀 Deploy
     needs: e2e
@@ -118,7 +112,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-
       - uses: actions/setup-node@v3
         with: { node-version: '18' }
 
@@ -128,19 +121,26 @@ jobs:
           npm ci
           npm run build
 
-      # GitHub Pages
+      # ── Diagnostic : les trois secrets sont-ils présents ? ───────────────
+      - name: Check Vercel secrets presence
+        run: |
+          echo "VERCEL_TOKEN set?      -> ${{ secrets.VERCEL_TOKEN != '' }}"
+          echo "VERCEL_ORG_ID set?     -> ${{ secrets.VERCEL_ORG_ID != '' }}"
+          echo "VERCEL_PROJECT_ID set? -> ${{ secrets.VERCEL_PROJECT_ID != '' }}"
+
+      # ── GitHub Pages ────────────────────────────────────────────────────
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: frontend/build
 
-      # Vercel production
+      # ── Vercel production ───────────────────────────────────────────────
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v20
         with:
           vercel-token:      ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id:     ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: backend     # change en 'frontend' si tu veux déployer le build React
+          working-directory: backend        # change si tu déploies le front
           vercel-args: '--prod'
