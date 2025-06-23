@@ -1,57 +1,52 @@
-version: '3.8'
+# .github/workflows/ci-backend.yml
+name: CI Backend
 
-services:
-  mysql:
-    image: mysql:8.0
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE:    ${DB_NAME}
-      MYSQL_USER:        ${DB_USER}
-      MYSQL_PASSWORD:    ${DB_PASSWORD}
-    volumes:
-      - db_data:/var/lib/mysql
-      - ./backend/app/db_seed.sh:/docker-entrypoint-initdb.d/db_seed.sh
-    ports:
-      - "3307:3306"
-    healthcheck:
-      test:     ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout:  5s
-      retries:  5
+on: [push, pull_request]
 
-  backend:
-    build: ./backend
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    environment:
-      DB_HOST:     mysql
-      DB_PORT:     3306
-      PYTHONPATH:  /app
-    depends_on:
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
       mysql:
-        condition: service_healthy
-    ports:
-      - "5000:5000"
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: mydb
+          MYSQL_USER: user
+          MYSQL_PASSWORD: pwd
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
-  adminer:
-    image: adminer
-    restart: unless-stopped
-    ports:
-      - "8083:8080"
+    steps:
+      - uses: actions/checkout@v3
 
-  frontend:
-    build: ./frontend
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    depends_on:
-      - backend
-    ports:
-      - "3000:3000"
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-volumes:
-  db_data:
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Wait for MySQL
+        run: |
+          for i in {1..10}; do
+            mysqladmin ping -h127.0.0.1 -uroot -proot && break
+            sleep 5
+          done
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: mydb
+          DB_USER: user
+          DB_PASSWORD: pwd
+        run: pytest --cov=app
