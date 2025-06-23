@@ -6,12 +6,13 @@ on:
   pull_request:
     branches: [main]
 
-# ── autorise le GITHUB_TOKEN à faire un git push ─────────────────────────────
+# Autorise le GITHUB_TOKEN à pousser sur gh-pages
 permissions:
   contents: write
 
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
+
 # ── 1. Tests backend (pytest) ────────────────────────────────────────────────
   test-backend:
     name: 🐍 Backend Tests
@@ -136,17 +137,19 @@ jobs:
           npm ci
           npm run build
 
+      # ── GitHub Pages ────────────────────────────────
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: frontend/build
 
+      # ── Vercel (production) ─────────────────────────
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v20
         with:
           vercel-token:      ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id:     ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: backend
-          prod: true
+          working-directory: backend            # si tu déploies le backend
+          vercel-args: '--prod'                 # push en prod
