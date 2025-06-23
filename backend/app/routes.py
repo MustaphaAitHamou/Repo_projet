@@ -1,45 +1,61 @@
-from flask import Flask, request, jsonify, abort
-from .models import db, User
+# backend/app/routes.py
+
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
 from .config import Config
-from flask_migrate import Migrate
-import os
 
 app = Flask(__name__)
 app.config.from_object(Config)
-db.init_app(app)
-migrate = Migrate(app, db)
+db = SQLAlchemy(app)
 
-# Création des tables au startup
-with app.app_context():
+# -- Models --
+
+class User(db.Model):
+    __tablename__ = 'user'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    hashed_pwd = db.Column(db.String(256), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'is_admin': self.is_admin,
+        }
+
+# -- Create tables juste avant la première requête --
+@app.before_first_request
+def create_tables():
     db.create_all()
+
+# -- Routes --
 
 @app.route('/users', methods=['POST'])
 def add_user():
-    data = request.json
-    if not data.get('email') or not data.get('password'):
-        abort(400)
-    u = User(email=data['email'])
-    u.set_password(data['password'])
-    db.session.add(u)
+    data = request.get_json()
+    if not data or 'email' not in data or 'password' not in data:
+        return jsonify({'error': 'email and password required'}), 400
+
+    from werkzeug.security import generate_password_hash
+
+    user = User(
+        email=data['email'],
+        hashed_pwd=generate_password_hash(data['password']),
+        is_admin=False
+    )
+    db.session.add(user)
     db.session.commit()
-    return jsonify({'id': u.id}), 201
+    return jsonify({'id': user.id}), 201
 
 @app.route('/users', methods=['GET'])
 def list_users():
-    users = User.query.with_entities(User.id, User.email, User.is_admin).all()
-    return jsonify([{'id': u.id, 'email': u.email, 'is_admin': u.is_admin} for u in users])
+    users = User.query.all()
+    return jsonify([u.to_dict() for u in users]), 200
 
-@app.route('/users/<int:user_id>', methods=['GET'])
-def get_user(user_id):
-    u = User.query.get_or_404(user_id)
-    return jsonify({'id': u.id, 'email': u.email, 'is_admin': u.is_admin})
+# -- Lancement direct (dev) --
 
-@app.route('/users/<int:user_id>', methods=['DELETE'])
-def delete_user(user_id):
-    token = request.headers.get('X-Admin-Token')
-    if token != os.getenv('ADMIN_PASSWORD'):
-        abort(403)
-    u = User.query.get_or_404(user_id)
-    db.session.delete(u)
-    db.session.commit()
-    return '', 204
+if __name__ == '__main__':
+    # pour lancer avec python routes.py
+    db.create_all()
+    app.run(host='0.0.0.0', port=5000)
