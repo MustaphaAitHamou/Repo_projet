@@ -1,51 +1,45 @@
-// frontend/src/App.jsx
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import UserForm from './components/UserForm';
 
+const API = process.env.REACT_APP_API_URL;
+
 export default function App() {
   const [users, setUsers] = useState([]);
 
-  /* ------------------------------------------------------------------ */
-  /* 1) Récupération de la liste des utilisateurs                       */
-  /* ------------------------------------------------------------------ */
+  /* ─── Lecture de la liste ─── */
   const fetchUsers = async () => {
-    const { data } = await axios.get(
-      `${process.env.REACT_APP_API_URL}/users`
-    );
+    const { data } = await axios.get(`${API}/users`);
     setUsers(data);
   };
 
-  /* Charge la liste au montage du composant */
+  /* ─── Création d’utilisateur ─── */
+  const addUser = async ({ email, password }) => {
+    await axios.post(`${API}/users`, { email, password });
+    fetchUsers();
+  };
+
+  /* ─── Suppression ─── */
+  const remove = async (id) => {
+    await axios.delete(`${API}/users/${id}`, {
+      headers: {
+        'X-Admin-Token': process.env.REACT_APP_ADMIN_PASSWORD,
+      },
+    });
+    fetchUsers();
+  };
+
+  /* Charge la liste au montage */
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  /* ------------------------------------------------------------------ */
-  /* 2) Suppression d'un utilisateur                                    */
-  /* ------------------------------------------------------------------ */
-  const remove = async (id) => {
-    await axios.delete(
-      `${process.env.REACT_APP_API_URL}/users/${id}`,
-      {
-        headers: {
-          // .env ➜ REACT_APP_ADMIN_PASSWORD
-          'X-Admin-Token': process.env.REACT_APP_ADMIN_PASSWORD,
-        },
-      }
-    );
-    fetchUsers(); // rafraîchit la liste
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* 3) Rendu                                                           */
-  /* ------------------------------------------------------------------ */
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Utilisateurs</h1>
 
-      {/* UserForm déclenchera fetchUsers après création */}
-      <UserForm onSubmit={fetchUsers} />
+      {/* Formulaire d’ajout */}
+      <UserForm onSubmit={addUser} />
 
       <ul>
         {users.map((u) => (
