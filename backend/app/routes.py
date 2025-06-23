@@ -12,29 +12,28 @@ class SafeSQLAlchemy(SQLAlchemy):
         Supprime l’extension et l’engine existant pour forcer la reconstruction
         avec la config active (utile si on change SQLALCHEMY_DATABASE_URI en TESTING).
         """
-        # Récupère l’objet Flask réel, pas le LocalProxy
         real_app = current_app._get_current_object()
 
         # Retire l’extension sqlalchemy pour cet app
         real_app.extensions.pop('sqlalchemy', None)
 
         # Retire l’engine cache pour cet app
-        # _app_engines est un WeakKeyDictionary mapping app → {bind_key: Engine}
         if hasattr(self, '_app_engines'):
             self._app_engines.pop(real_app, None)
 
         # Ré-initialise l’extension (prend en compte current_app.config)
         self.init_app(real_app)
 
-    def create_all(self, bind=None):
+    def create_all(self):
         # Avant de créer les tables, on reconstruit un engine propre
         self._refresh_engine()
-        super().create_all(bind=bind)
+        # Appelle la méthode parent sans args
+        super().create_all()
 
-    def drop_all(self, bind=None):
+    def drop_all(self):
         # Avant de drop, même mécanique
         self._refresh_engine()
-        super().drop_all(bind=bind)
+        super().drop_all()
 
 # --- création de l’app et du db handle ---
 app = Flask(__name__)
