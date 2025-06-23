@@ -1,52 +1,78 @@
-# .github/workflows/ci-backend.yml
-name: CI Backend
+version: '3.9'
 
-on: [push, pull_request]
+# ──────────────────────────── Docker Compose ────────────────────────────
+# Stack :  MySQL 8  + Adminer + Flask (Gunicorn) + React
+# Port host ↔ container :
+#   MySQL → 3307:3306  (évite conflit avec un MySQL local)
+#   Adminer → 8084:8080
+#   API → 5000:5000
+#   Frontend → 3000:3000
+# Les valeurs par défaut peuvent être surchargées via un fichier `.env`
+# placé à la racine (variables DB_* et ADMIN_PASSWORD).
 
-jobs:
-  test-backend:
-    runs-on: ubuntu-latest
-    services:
+services:
+  # ───────────────────────────── MySQL ─────────────────────────────
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    ports:
+      - "3307:3306"                      # (host)3307 → (container)3306
+    environment:
+      MYSQL_ROOT_PASSWORD: root          # même mot de passe utilisé par le health-check
+      MYSQL_DATABASE:      ${DB_NAME:-mydb}
+      MYSQL_USER:          ${DB_USER:-myuser}
+      MYSQL_PASSWORD:      ${DB_PASSWORD:-mypassword}
+    volumes:
+      - db-data:/var/lib/mysql
+      # scripts d'init + seed admin (exécutés une seule fois au premier démarrage)
+      - ./backend/db_init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./backend/db_seed.sh:/docker-entrypoint-initdb.d/02-seed.sh
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────── Adminer ────────────────────────────
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    ports:
+      - "8084:8080"
+    depends_on:
+      - mysql
+
+  # ───────────────────────────── Backend (Flask) ────────────────────
+  backend:
+    build: ./backend                    # Dockerfile présent dans ./backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-mydb}
+      DB_USER: ${DB_USER:-myuser}
+      DB_PASSWORD: ${DB_PASSWORD:-mypassword}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-PvdrTAzTeR247sDnAZBr}
+    depends_on:
       mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: mydb
-          MYSQL_USER: user
-          MYSQL_PASSWORD: pwd
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    command: >
+      gunicorn -w 2 -b 0.0.0.0:5000 app.routes:app
 
-    steps:
-      - uses: actions/checkout@v3
+  # ───────────────────────────── Frontend (React) ───────────────────
+  frontend:
+    build: ./frontend                   # Dockerfile présent dans ./frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL:        http://backend:5000
+      REACT_APP_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-PvdrTAzTeR247sDnAZBr}
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    command: ["npm","start"]
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        working-directory: backend
-        run: pip install -r requirements.txt
-
-      - name: Wait for MySQL
-        run: |
-          for i in {1..10}; do
-            mysqladmin ping -h127.0.0.1 -uroot -proot && break
-            sleep 5
-          done
-
-      - name: Run tests
-        working-directory: backend
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_NAME: mydb
-          DB_USER: user
-          DB_PASSWORD: pwd
-        run: pytest --cov=app
+volumes:
+  db-data:
