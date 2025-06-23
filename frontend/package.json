@@ -22,10 +22,10 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "jest --watchAll",
-    "cypress:open": "cypress open",
-    "cypress:run": "cypress run"
+    "test": "jest --ci --coverage",
+    "test:watch": "jest --watch"
   },
+  
   "browserslist": {
     "production": [
       ">0.2%",
