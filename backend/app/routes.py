@@ -9,9 +9,8 @@ app.config.from_object(Config)
 db.init_app(app)
 migrate = Migrate(app, db)
 
-# Créer la BDD si besoin
-@app.before_first_request
-def create_tables():
+# Création des tables au startup
+with app.app_context():
     db.create_all()
 
 @app.route('/users', methods=['POST'])
@@ -37,7 +36,6 @@ def get_user(user_id):
 
 @app.route('/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
-    # Auth simplifiée: header X-Admin-Token == ADMIN_PASSWORD
     token = request.headers.get('X-Admin-Token')
     if token != os.getenv('ADMIN_PASSWORD'):
         abort(403)

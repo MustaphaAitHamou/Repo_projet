@@ -8,11 +8,10 @@ CREATE TABLE IF NOT EXISTS user (
   is_admin BOOL DEFAULT FALSE
 );
 
--- Seed admin
 INSERT INTO user (email, hashed_pwd, is_admin)
 VALUES (
   '${ADMIN_EMAIL}',
   SHA2('${ADMIN_PASSWORD}', 256),
   TRUE
 )
-ON DUPLICATE KEY UPDATE email = email;
+ON DUPLICATE KEY UPDATE email=email;
