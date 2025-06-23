@@ -2,16 +2,39 @@
 
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import OperationalError
+from werkzeug.security import generate_password_hash
 from .config import Config
 
+# -----------------------------------------------------------------------------
+# On étend SQLAlchemy pour forcer la prise en compte du nouveau
+# SQLALCHEMY_DATABASE_URI à chaque create_all()/drop_all(), en vidant
+# le cache self.engines.
+# -----------------------------------------------------------------------------
+class SafeSQLAlchemy(SQLAlchemy):
+    def create_all(self, bind=None):
+        # Force la reconstruction de l'engine à partir du config actuelle
+        self.engines.clear()
+        return super().create_all(bind=bind)
+
+    def drop_all(self, bind=None):
+        self.engines.clear()
+        return super().drop_all(bind=bind)
+
+# -----------------------------------------------------------------------------
+# Instanciation de l'app + DB
+# -----------------------------------------------------------------------------
 app = Flask(__name__)
 app.config.from_object(Config)
-db = SQLAlchemy(app)
 
-# -- Modèle --
+db = SafeSQLAlchemy(app)
 
+# -----------------------------------------------------------------------------
+# Modèle
+# -----------------------------------------------------------------------------
 class User(db.Model):
     __tablename__ = 'user'
+
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     hashed_pwd = db.Column(db.String(256), nullable=False)
@@ -24,21 +47,25 @@ class User(db.Model):
             'is_admin': self.is_admin,
         }
 
-# -- Création des tables avant chaque requête (idéalement une seule fois) --
-
+# -----------------------------------------------------------------------------
+# (Optionnel) Création automatique des tables avant chaque requête
+# -----------------------------------------------------------------------------
 @app.before_request
 def ensure_tables_exist():
-    db.create_all()
+    try:
+        db.create_all()
+    except OperationalError:
+        # Si on ne peut pas joindre MySQL (ex. hors container), on ignore
+        pass
 
-# -- Routes --
-
+# -----------------------------------------------------------------------------
+# Routes
+# -----------------------------------------------------------------------------
 @app.route('/users', methods=['POST'])
 def add_user():
-    data = request.get_json()
-    if not data or 'email' not in data or 'password' not in data:
+    data = request.get_json() or {}
+    if 'email' not in data or 'password' not in data:
         return jsonify({'error': 'email and password required'}), 400
-
-    from werkzeug.security import generate_password_hash
 
     user = User(
         email=data['email'],
@@ -54,9 +81,14 @@ def list_users():
     users = User.query.all()
     return jsonify([u.to_dict() for u in users]), 200
 
-# -- Lancement direct pour dev --
-
+# -----------------------------------------------------------------------------
+# Lancement direct (dev)
+# -----------------------------------------------------------------------------
 if __name__ == '__main__':
-    # Crée les tables si on lance directement ce script
-    db.create_all()
+    # Crée les tables en local avant de démarrer
+    try:
+        db.drop_all()
+        db.create_all()
+    except OperationalError:
+        pass
     app.run(host='0.0.0.0', port=5000)
