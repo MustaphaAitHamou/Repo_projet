@@ -1,2 +1,2 @@
-// src/setupTests.js
-import '@testing-library/jest-dom/extend-expect';
+// Charge tous les matchers custom (toHaveTextContent, toBeInTheDocument, …)
+import '@testing-library/jest-dom';
