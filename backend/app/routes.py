@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.config.from_object(Config)
 db = SQLAlchemy(app)
 
-# -- Models --
+# -- Modèle --
 
 class User(db.Model):
     __tablename__ = 'user'
@@ -24,9 +24,10 @@ class User(db.Model):
             'is_admin': self.is_admin,
         }
 
-# -- Create tables juste avant la première requête --
-@app.before_first_request
-def create_tables():
+# -- Création des tables avant chaque requête (idéalement une seule fois) --
+
+@app.before_request
+def ensure_tables_exist():
     db.create_all()
 
 # -- Routes --
@@ -53,9 +54,9 @@ def list_users():
     users = User.query.all()
     return jsonify([u.to_dict() for u in users]), 200
 
-# -- Lancement direct (dev) --
+# -- Lancement direct pour dev --
 
 if __name__ == '__main__':
-    # pour lancer avec python routes.py
+    # Crée les tables si on lance directement ce script
     db.create_all()
     app.run(host='0.0.0.0', port=5000)
