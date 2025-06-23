@@ -2,12 +2,13 @@ name: CI & CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
-jobs:
 # ─────────────────────────────────────────────────────────────────────────────
+jobs:
+# ── 1. Tests Python ──────────────────────────────────────────────────────────
   test-backend:
     name: 🐍 Backend Tests
     runs-on: ubuntu-latest
@@ -29,7 +30,11 @@ jobs:
       - name: Run pytest
         working-directory: backend
         run: pytest --cov=app
-# ─────────────────────────────────────────────────────────────────────────────
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+
+# ── 2. Tests React/Jest ──────────────────────────────────────────────────────
   test-frontend:
     name: ⚛️ Frontend Tests
     needs: test-backend
@@ -44,18 +49,22 @@ jobs:
       - run: npm ci
         working-directory: frontend
 
-      - run: npm test               # script = jest --ci --coverage
+      - run: npm test -- --coverage
         working-directory: frontend
-# ─────────────────────────────────────────────────────────────────────────────
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+
+# ── 3. Tests Cypress (E2E) ───────────────────────────────────────────────────
   e2e:
     name: 🧪 E2E Tests
-    needs: [test-backend, test-frontend]
+    needs: [ test-backend, test-frontend ]
     runs-on: ubuntu-latest
 
     services:
       mysql:
         image: mysql:8.0
-        ports: ['3307:3306']         # host:container
+        ports: [ '3307:3306' ]                 # host 3307 → container 3306
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: mydb
@@ -68,7 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # ── Backend setup ────────────────────────────────────────────────────
+      # --- Backend setup ----------------------------------------------------
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
@@ -81,13 +90,14 @@ jobs:
         working-directory: backend
         env:
           DB_HOST: 127.0.0.1
-          DB_PORT: 3307          # ← port host exposé
+          DB_PORT: 3307                # ← port exposé
           DB_NAME: mydb
           DB_USER: test
           DB_PASSWORD: testpass
+          ADMIN_PASSWORD: testadmin    # ← token admin envoyé par le front
         run: nohup gunicorn -w 2 -b 0.0.0.0:5000 app.routes:app &
 
-      # ── Frontend install ────────────────────────────────────────────────
+      # --- Frontend install -------------------------------------------------
       - uses: actions/setup-node@v3
         with:
           node-version: '18'
@@ -95,23 +105,26 @@ jobs:
       - run: npm ci
         working-directory: frontend
 
-      # ── Cypress ─────────────────────────────────────────────────────────
+      # --- Cypress run ------------------------------------------------------
       - name: Run Cypress
         uses: cypress-io/github-action@v5
         with:
-          working-directory: frontend
-          start: npm start                 # démarre React (port 3000)
+          working-directory: frontend            # racine des tests
+          start: npm start                       # React sur :3000
           wait-on: http://localhost:3000
           wait-on-timeout: 90
           config-file: cypress.config.js
         env:
           REACT_APP_API_URL: http://localhost:5000
-# ─────────────────────────────────────────────────────────────────────────────
+          REACT_APP_ADMIN_PASSWORD: testadmin
+
+# ── 4. Déploiement (Pages + Vercel) ──────────────────────────────────────────
   deploy:
     name: 🚀 Deploy
     needs: e2e
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+
     steps:
       - uses: actions/checkout@v3
 
@@ -119,17 +132,20 @@ jobs:
         with:
           node-version: '18'
 
-      - run: |
+      - name: Build frontend
+        working-directory: frontend
+        run: |
           npm ci
           npm run build
-        working-directory: frontend
 
-      - uses: peaceiris/actions-gh-pages@v3
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: frontend/build
 
-      - uses: amondnet/vercel-action@v20
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v20
         with:
           vercel-token:      ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id:     ${{ secrets.VERCEL_ORG_ID }}

@@ -1,15 +1,19 @@
+import os
 from flask import Flask, request, jsonify, current_app
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import OperationalError
 from werkzeug.security import generate_password_hash
-from flask_cors import CORS                 # ← ajouté
+from flask_cors import CORS
 from .config import Config
 
+
 class SafeSQLAlchemy(SQLAlchemy):
+    """Réinitialise proprement l’engine quand la config change (tests)."""
+
     def _refresh_engine(self):
         real_app = current_app._get_current_object()
         if getattr(real_app, "_got_first_request", False):
-            return
+            return                     # pas de reset après la 1ʳᵉ requête
         real_app.extensions.pop("sqlalchemy", None)
         if hasattr(self, "_app_engines"):
             self._app_engines.pop(real_app, None)
@@ -23,13 +27,13 @@ class SafeSQLAlchemy(SQLAlchemy):
         self._refresh_engine()
         super().drop_all()
 
+
 app = Flask(__name__)
 app.config.from_object(Config)
-
-# ─── CORS pour toutes les origines (pratique en CI/dev) ──────────────────────
-CORS(app)                                    # ← ligne ajoutée
+CORS(app)                                # Autorise les appels depuis :3000
 
 db = SafeSQLAlchemy(app)
+
 
 class User(db.Model):
     __tablename__ = "user"
@@ -41,13 +45,18 @@ class User(db.Model):
     def to_dict(self):
         return {"id": self.id, "email": self.email, "is_admin": self.is_admin}
 
+
+# ────────────────────────────────────────────────────────────────────────────
 @app.before_request
 def ensure_tables_exist():
+    """Crée les tables si la base vient juste d’être lancée (CI, dev)."""
     try:
         db.create_all()
     except OperationalError:
         pass
 
+
+# ──────────────── POST /users ───────────────────────────────────────────────
 @app.route("/users", methods=["POST"])
 def add_user():
     data = request.get_json() or {}
@@ -63,10 +72,28 @@ def add_user():
     db.session.commit()
     return jsonify({"id": user.id}), 201
 
+
+# ──────────────── GET /users ────────────────────────────────────────────────
 @app.route("/users", methods=["GET"])
 def list_users():
     return jsonify([u.to_dict() for u in User.query.all()]), 200
 
+
+# ──────────────── DELETE /users/<id> ────────────────────────────────────────
+@app.route("/users/<int:user_id>", methods=["DELETE"])
+def delete_user(user_id):
+    """Suppression protégée par le token admin simple."""
+    token = request.headers.get("X-Admin-Token")
+    if token != os.getenv("ADMIN_PASSWORD"):
+        return jsonify({"error": "unauthorized"}), 401
+
+    user = User.query.get_or_404(user_id)
+    db.session.delete(user)
+    db.session.commit()
+    return "", 204
+
+
+# ────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     try:
         db.drop_all()
