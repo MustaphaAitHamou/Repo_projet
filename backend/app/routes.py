@@ -1,5 +1,3 @@
-# backend/app/routes.py
-
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import OperationalError
@@ -8,13 +6,17 @@ from .config import Config
 
 class SafeSQLAlchemy(SQLAlchemy):
     def create_all(self, bind=None):
-        # Vider le cache pour forcer la reconstruction de l'engine
+        # Vider le cache des engines pour forcer la reconstruction
         self.engines.clear()
-        return super().create_all(bind)
+        # Recréer l'engine à partir de la config courante (ex. SQLite mémoire en test)
+        engine = self.get_engine()
+        # Créer les tables de tous les modèles déclarés
+        self.Model.metadata.create_all(bind=engine)
 
     def drop_all(self, bind=None):
         self.engines.clear()
-        return super().drop_all(bind)
+        engine = self.get_engine()
+        self.Model.metadata.drop_all(bind=engine)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -36,6 +38,7 @@ def ensure_tables_exist():
     try:
         db.create_all()
     except OperationalError:
+        # Par exemple si la base MySQL n'est pas encore dispo au démarrage
         pass
 
 @app.route('/users', methods=['POST'])
