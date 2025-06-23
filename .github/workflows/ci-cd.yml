@@ -2,13 +2,17 @@ name: CI & CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+# ── autorise le GITHUB_TOKEN à faire un git push ─────────────────────────────
+permissions:
+  contents: write
 
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
-# ── 1. Tests Python ──────────────────────────────────────────────────────────
+# ── 1. Tests backend (pytest) ────────────────────────────────────────────────
   test-backend:
     name: 🐍 Backend Tests
     runs-on: ubuntu-latest
@@ -31,10 +35,7 @@ jobs:
         working-directory: backend
         run: pytest --cov=app
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-
-# ── 2. Tests React/Jest ──────────────────────────────────────────────────────
+# ── 2. Tests frontend (Jest) ─────────────────────────────────────────────────
   test-frontend:
     name: ⚛️ Frontend Tests
     needs: test-backend
@@ -52,19 +53,16 @@ jobs:
       - run: npm test -- --coverage
         working-directory: frontend
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-
-# ── 3. Tests Cypress (E2E) ───────────────────────────────────────────────────
+# ── 3. E2E (Cypress) ─────────────────────────────────────────────────────────
   e2e:
     name: 🧪 E2E Tests
-    needs: [ test-backend, test-frontend ]
+    needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
 
     services:
       mysql:
         image: mysql:8.0
-        ports: [ '3307:3306' ]                 # host 3307 → container 3306
+        ports: ['3307:3306']          # host 3307 → container 3306
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: mydb
@@ -77,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # --- Backend setup ----------------------------------------------------
+      # Backend
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
@@ -90,14 +88,14 @@ jobs:
         working-directory: backend
         env:
           DB_HOST: 127.0.0.1
-          DB_PORT: 3307                # ← port exposé
+          DB_PORT: 3307
           DB_NAME: mydb
           DB_USER: test
           DB_PASSWORD: testpass
-          ADMIN_PASSWORD: testadmin    # ← token admin envoyé par le front
+          ADMIN_PASSWORD: testadmin
         run: nohup gunicorn -w 2 -b 0.0.0.0:5000 app.routes:app &
 
-      # --- Frontend install -------------------------------------------------
+      # Frontend deps
       - uses: actions/setup-node@v3
         with:
           node-version: '18'
@@ -105,12 +103,12 @@ jobs:
       - run: npm ci
         working-directory: frontend
 
-      # --- Cypress run ------------------------------------------------------
+      # Cypress
       - name: Run Cypress
         uses: cypress-io/github-action@v5
         with:
-          working-directory: frontend            # racine des tests
-          start: npm start                       # React sur :3000
+          working-directory: frontend
+          start: npm start
           wait-on: http://localhost:3000
           wait-on-timeout: 90
           config-file: cypress.config.js
@@ -118,7 +116,7 @@ jobs:
           REACT_APP_API_URL: http://localhost:5000
           REACT_APP_ADMIN_PASSWORD: testadmin
 
-# ── 4. Déploiement (Pages + Vercel) ──────────────────────────────────────────
+# ── 4. Déploiement ───────────────────────────────────────────────────────────
   deploy:
     name: 🚀 Deploy
     needs: e2e
