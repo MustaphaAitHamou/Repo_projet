@@ -1,30 +1,19 @@
 version: '3.9'
 
-# ──────────────────────────── Docker Compose ────────────────────────────
-# Stack :  MySQL 8  + Adminer + Flask (Gunicorn) + React
-# Port host ↔ container :
-#   MySQL → 3307:3306  (évite conflit avec un MySQL local)
-#   Adminer → 8084:8080
-#   API → 5000:5000
-#   Frontend → 3000:3000
-# Les valeurs par défaut peuvent être surchargées via un fichier `.env`
-# placé à la racine (variables DB_* et ADMIN_PASSWORD).
-
 services:
-  # ───────────────────────────── MySQL ─────────────────────────────
+  # ──────────────────────────── MySQL ────────────────────────────
   mysql:
     image: mysql:8.0
     restart: unless-stopped
     ports:
-      - "3307:3306"                      # (host)3307 → (container)3306
+      - "3307:3306"                       # hôte 3307 → conteneur 3306
     environment:
-      MYSQL_ROOT_PASSWORD: root          # même mot de passe utilisé par le health-check
+      MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE:      ${DB_NAME:-mydb}
       MYSQL_USER:          ${DB_USER:-myuser}
       MYSQL_PASSWORD:      ${DB_PASSWORD:-mypassword}
     volumes:
       - db-data:/var/lib/mysql
-      # scripts d'init + seed admin (exécutés une seule fois au premier démarrage)
       - ./backend/db_init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./backend/db_seed.sh:/docker-entrypoint-initdb.d/02-seed.sh
     healthcheck:
@@ -33,7 +22,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ───────────────────────────── Adminer ────────────────────────────
+  # ──────────────────────────── Adminer ──────────────────────────
   adminer:
     image: adminer
     restart: unless-stopped
@@ -42,9 +31,9 @@ services:
     depends_on:
       - mysql
 
-  # ───────────────────────────── Backend (Flask) ────────────────────
+  # ──────────────────────────── Backend (Flask) ──────────────────
   backend:
-    build: ./backend                    # Dockerfile présent dans ./backend
+    build: ./backend
     restart: unless-stopped
     environment:
       DB_HOST: mysql
@@ -57,22 +46,21 @@ services:
       mysql:
         condition: service_healthy
     ports:
-      - "5000:5000"
-    command: >
-      gunicorn -w 2 -b 0.0.0.0:5000 app.routes:app
+      - "5000:5000"                       # port exposé ; accès via http://localhost:5000
+    # ⬅︎  plus de "command:" ici → on laisse le CMD du Dockerfile lancer Gunicorn
 
-  # ───────────────────────────── Frontend (React) ───────────────────
+  # ──────────────────────────── Frontend (React) ─────────────────
   frontend:
-    build: ./frontend                   # Dockerfile présent dans ./frontend
+    build: ./frontend
     restart: unless-stopped
     environment:
-      REACT_APP_API_URL:        http://backend:5000
+      REACT_APP_API_URL:        http://localhost:5000           # l’UI appelle directement l’API hôte
       REACT_APP_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-PvdrTAzTeR247sDnAZBr}
     depends_on:
       - backend
     ports:
-      - "3000:3000"
-    command: ["npm","start"]
+      - "3003:3000"                      # http://localhost:3003
+    command: ["npm", "start"]
 
 volumes:
   db-data:
